@@ -3,12 +3,7 @@
 #include <LiquidCrystal_I2C.h>
 
 int frequencyPotPin = A0; // Potentiometer output connected to analog pin 0
-int frequencyPotVal = 0;
-int frequencyInt = 0;
-int averageFrequencyVal = 0;
-float frequency = 0;
-float previousFrequency = 0;
-
+int previousFrequency = 0;
 // LCD initialization to the library with the number of the interface pins
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
@@ -33,18 +28,19 @@ void loop() {
 
 void adjustRadioFrequency()
 {
+  int averageFrequencyVal = 0;
   // collecting the average value of the potentiometer
-  frequencyPotVal = analogRead(frequencyPotPin);
-  for(int i; i < 30; i++)
+  for(int i; i < 50; i++)
   {
-     averageFrequencyVal = averageFrequencyVal + frequencyPotVal; 
-     delay(1);
+    int frequencyPotVal = analogRead(frequencyPotPin);
+    averageFrequencyVal = averageFrequencyVal + frequencyPotVal; 
   }
-  averageFrequencyVal = averageFrequencyVal/30;
+  averageFrequencyVal = averageFrequencyVal/50;
 
   // mapping the potentiometer value to a value between radio frequencies 87.0 - 107.00
-  frequencyInt = map(averageFrequencyVal, 2, 1014, 8700, 10700); //Analog value to frequency from 87.0 MHz to 107.00 MHz 
+  int frequencyInt = map(averageFrequencyVal, 0, 721, 8700, 10700); //Analog value to frequency from 87.0 MHz to 107.00 MHz 
   float frequency = frequencyInt/100.0f;
+
 
   // Adjust radio frequency
   if(frequency - previousFrequency >= 0.1f || previousFrequency - frequency >= 0.1f)
