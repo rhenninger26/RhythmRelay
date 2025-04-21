@@ -4,10 +4,17 @@
 
 // --------- PLAY/PAUSE BUTTON -----------
 int buttonPin = 2;
+bool radioOn = true;
+bool lastButtonState = LOW;
+bool currentButtonState = LOW;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50;
 
 // -------- FREQUENCY POTENTIOMETER ---------
 int frequencyPotPin = A0; // Potentiometer output connected to analog pin 0
 int previousFrequency = 0;
+unsigned long lastFrequencyCheck = 0;
+const unsigned long frequencyCheckInterval = 200; // Check every 100ms instead 
 
 // ------------- LCD ----------
 // LCD initialization to the library with the number of the interface pins
@@ -28,39 +35,87 @@ void setup() {
   lcd.print("  Rhythm Relay");// Print a message to the LCD
 
   // Button initalization
-  pinMode(buttonPin, INPUT);
+  pinMode(buttonPin, INPUT_PULLUP);  // Use internal pull-up resistor
+  currentButtonState = digitalRead(buttonPin);
+  lastButtonState = currentButtonState;
 }
 
 void loop() {
-  adjustRadioFrequency();
+
+    handleButtonPress();
+    if (radioOn) {
+        adjustRadioFrequency();
+    }
+}
+
+void handleButtonPress() {
+    // Read the current state
+    bool reading = digitalRead(buttonPin);
+
+    // If the reading has changed
+    if (reading != lastButtonState) {
+        lastDebounceTime = millis();
+    }
+
+    // Wait for the debounce delay
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+        // If the button state has changed
+        if (reading != currentButtonState) {
+            currentButtonState = reading;
+
+            // Only toggle on button press (rising edge)
+            if (currentButtonState == HIGH) {
+                radioOn = !radioOn;
+
+                // Update display and radio state
+                lcd.clear();
+                if (radioOn) {
+                    radio.setFrequency(previousFrequency); // Restore last frequency
+                    lcd.print(String(previousFrequency, 1));
+
+                }
+                else {
+                    radio.setFrequency(0.0); // Set frequency to 0 MHz to effectively disable output
+                    lcd.print("Radio OFF");
+
+                }
+            }
+        }
+    }
+
+    // Save the reading for next time
+    lastButtonState = reading;
 }
 
 void adjustRadioFrequency()
 {
-  int averageFrequencyVal = 0;
-  // collecting the average value of the potentiometer
-  for(int i; i < 50; i++)
-  {
-    int frequencyPotVal = analogRead(frequencyPotPin);
-    averageFrequencyVal = averageFrequencyVal + frequencyPotVal; 
-  }
-  averageFrequencyVal = averageFrequencyVal/50;
+    // Only check frequency every 100ms
+    if (millis() - lastFrequencyCheck >= frequencyCheckInterval) {
+        lastFrequencyCheck = millis();
 
-  // mapping the potentiometer value to a value between radio frequencies 87.0 - 107.00
-  int frequencyInt = map(averageFrequencyVal, 0, 721, 8700, 10700); //Analog value to frequency from 87.0 MHz to 107.00 MHz 
-  float frequency = frequencyInt/100.0f;
+        int averageFrequencyVal = 0;
+        // Reduce samples to decrease processing time
+        for (int i = 0; i < 10; i++)  // Reduced from 50 to 10 samples
+        {
+            int frequencyPotVal = analogRead(frequencyPotPin);
+            averageFrequencyVal = averageFrequencyVal + frequencyPotVal;
+        }
+        averageFrequencyVal = averageFrequencyVal / 10;
 
+        // mapping the potentiometer value to a value between radio frequencies 87.0 - 107.00
+        int frequencyInt = map(averageFrequencyVal, 0, 721, 8700, 10700);
+        float frequency = frequencyInt / 100.0f;
 
-  // Adjust radio frequency
-  if (abs(frequency - previousFrequency) >= 0.1f) // Simplified condition
-  {
-      radio.setFrequency(frequency);
+        // Only update if there's a significant change
+        if (abs(frequency - previousFrequency) >= 0.1f)
+        {
+            radio.setFrequency(frequency);
+            delay(10);  // Give the radio module time to stabilize
 
-      // Clear the LCD before printing the new frequency
-      lcd.clear();
-      lcd.print(String(frequency, 1)); // Display frequency with 1 decimal place
-      previousFrequency = frequency;
-  }
-
-
+            // Update LCD only when frequency actually changes
+            lcd.clear();
+            lcd.print(String(frequency, 1));
+            previousFrequency = frequency;
+        }
+    }
 }
