@@ -1,6 +1,15 @@
 #include <Wire.h>
 #include <TEA5767Radio.h>
 #include <LiquidCrystal_I2C.h>
+#include <SPI.h>
+#include <RFID.h>
+#include <WiFiS3.h> // no library import, just included this line
+#include "arduino_secrets.h"
+
+// --------- RFID -------------
+RFID rfid(10, 9);
+unsigned char status;
+unsigned char str[MAX_LEN]; //MAX_LEN is 16: size of the array
 
 // --------- PLAY/PAUSE BUTTON -----------
 int buttonPin = 2;
@@ -24,6 +33,11 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 // Radio module initialization
 TEA5767Radio radio = TEA5767Radio();
 
+// ----------- WIFI ----------
+char ssid[] = SECRET_SSID;
+char pass[] = SECRET_PASS;
+int wifiStatus = WL_IDLE_STATUS;
+
 void setup() {
   // Radio initialization
   Wire.begin();
@@ -38,6 +52,39 @@ void setup() {
   pinMode(buttonPin, INPUT_PULLUP);  // Use internal pull-up resistor
   currentButtonState = digitalRead(buttonPin);
   lastButtonState = currentButtonState;
+
+  // RFID initalization
+  SPI.begin();
+  rfid.init(); //initialization
+  
+  // WiFi initalization
+  Serial.println("Connecting to wifi...");
+  // check for the WiFi module:
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    // don't continue
+    while (true);
+  }
+
+  String fv = WiFi.firmwareVersion();
+  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
+    Serial.println("Please upgrade the firmware");
+  }
+
+  // attempt to connect to WiFi network:
+  while (wifiStatus != WL_CONNECTED) {
+    Serial.print("Attempting to connect to WPA SSID: ");
+    Serial.println(ssid);
+
+    // Connect to WPA/WPA2 network:
+    wifiStatus = WiFi.begin(ssid, pass);
+
+    // wait 10 seconds for connection:
+    delay(10000);
+  }
+
+  // you're connected now, so print out the data:
+  Serial.print("You're connected to the network");
 }
 
 void loop() {
@@ -77,7 +124,6 @@ void handleButtonPress() {
                 else {
                     radio.setFrequency(0.0); // Set frequency to 0 MHz to effectively disable output
                     lcd.print("Radio OFF");
-
                 }
             }
         }
