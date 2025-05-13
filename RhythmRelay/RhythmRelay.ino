@@ -3,13 +3,21 @@
 #include <LiquidCrystal_I2C.h>
 #include <SPI.h>
 #include <RFID.h>
-#include <WiFiS3.h> // no library import, just included this line
-#include "arduino_secrets.h"
+#include <ArduinoBLE.h>
+
+// --------- BLUETOOTH -----------
+// BLE Service
+BLEService messageService("19B10000-E8F2-537E-4F6C-D104768A1214"); // Custom BLE Service UUID
+
+// BLE Characteristic for sending messages
+BLEStringCharacteristic messageCharacteristic("19B10001-E8F2-537E-4F6C-D104768A1214", // Custom characteristic UUID
+    BLERead | BLENotify, 50); // Allow remote device to read and get updates (notify), message up to 20 bytes
 
 // --------- RFID -------------
 RFID rfid(10, 9);
 unsigned char status;
 unsigned char str[MAX_LEN]; //MAX_LEN is 16: size of the array
+unsigned char key[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }; // Default key for authentication
 
 // --------- PLAY/PAUSE BUTTON -----------
 int buttonPin = 2;
@@ -18,6 +26,17 @@ bool lastButtonState = LOW;
 bool currentButtonState = LOW;
 unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 50;
+
+// --------- RECORD MODE POTENTIOMETER -----------
+int recordModePotPin = A2;
+int recordModeChangeValue = 110; // the value in which the potentiometer will flip a bool to change into record mode
+
+// -------- DC MOTOR ----------
+int in1Pin = 5; // Define L293D channel 1 pin
+int in2Pin = 3; // Define L293D channel 2 pin
+int enable1Pin = 6; // Define L293D enable 1 pin
+boolean rotationDir; // Define a variable to save the motor's rotation direction, true and false are represented by positive rotation and reverse rotation.
+int rotationSpeed; // Define a variable to save the motor rotation speed
 
 // -------- FREQUENCY POTENTIOMETER ---------
 int frequencyPotPin = A0; // Potentiometer output connected to analog pin 0
@@ -32,11 +51,6 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 // -------- RADIO MODULE ----------
 // Radio module initialization
 TEA5767Radio radio = TEA5767Radio();
-
-// ----------- WIFI ----------
-char ssid[] = SECRET_SSID;
-char pass[] = SECRET_PASS;
-int wifiStatus = WL_IDLE_STATUS;
 
 void setup() {
   // Radio initialization
@@ -56,42 +70,62 @@ void setup() {
   // RFID initalization
   SPI.begin();
   rfid.init(); //initialization
-  
-  // WiFi initalization
-  Serial.println("Connecting to wifi...");
-  // check for the WiFi module:
-  if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println("Communication with WiFi module failed!");
-    // don't continue
-    while (true);
+
+  // Motor initalization
+  pinMode(in1Pin, OUTPUT);
+  pinMode(in2Pin, OUTPUT);
+  pinMode(enable1Pin, OUTPUT);
+
+  // Bluetooth initalization
+  if (!BLE.begin()) {
+    Serial.println("Starting BLE failed!");
+    while (1);
   }
 
-  String fv = WiFi.firmwareVersion();
-  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
-    Serial.println("Please upgrade the firmware");
-  }
+  // Set advertised local name and service UUID
+  BLE.setLocalName("ArduinoR4");
+  BLE.setAdvertisedService(messageService);
 
-  // attempt to connect to WiFi network:
-  while (wifiStatus != WL_CONNECTED) {
-    Serial.print("Attempting to connect to WPA SSID: ");
-    Serial.println(ssid);
+  // Add the characteristic to the service
+  messageService.addCharacteristic(messageCharacteristic);
 
-    // Connect to WPA/WPA2 network:
-    wifiStatus = WiFi.begin(ssid, pass);
+  // Add service
+  BLE.addService(messageService);
 
-    // wait 10 seconds for connection:
-    delay(10000);
-  }
+  // Set initial value for the characteristic
+  messageCharacteristic.writeValue("Hello Phone!");
 
-  // you're connected now, so print out the data:
-  Serial.print("You're connected to the network");
+  // Start advertising
+  BLE.advertise();
+
+  Serial.println("Bluetooth device active, waiting for connections...");
 }
 
 void loop() {
-
     handleButtonPress();
     if (radioOn) {
-        adjustRadioFrequency();
+        if(analogRead(recordModePotPin) >= recordModeChangeValue) {
+            // start motor for record
+            int potenVal = analogRead(A3); // Read potentiometer value
+            // Determine rotation direction
+            if (potenVal > 512) {
+                rotationDir = true; // Clockwise
+                rotationSpeed = potenVal - 512; // Speed based on deviation from center
+            }
+            else {
+                rotationDir = false; // Counterclockwise
+                rotationSpeed = 512 - potenVal; // Speed based on deviation from center
+            }
+            // Map the speed to a usable PWM range
+            int pwmSpeed = map(rotationSpeed, 0, 512, 0, 255);
+
+            // Drive the motor
+            driveMotor(rotationDir, pwmSpeed);
+            recordMode();
+        }
+        else {
+            adjustRadioFrequency();
+        }
     }
 }
 
@@ -131,6 +165,35 @@ void handleButtonPress() {
 
     // Save the reading for next time
     lastButtonState = reading;
+}
+
+// collect information from RFID tag to send to phone via bluetooth
+void recordMode()
+{
+    // Adjust frequency to 87.5
+    radio.setFrequency(87.5);
+
+    // read RFID tag
+    
+
+    // ensure tag information is only sent once until a new record is used
+
+    // Display track info if possible
+}
+
+void driveMotor(boolean dir, int spd) {
+    // Control motor rotation direction
+    if (dir) {
+        digitalWrite(in1Pin, HIGH);
+        digitalWrite(in2Pin, LOW);
+    }
+    else {
+        digitalWrite(in1Pin, LOW);
+        digitalWrite(in2Pin, HIGH);
+    }
+
+    // Control motor rotation speed
+    analogWrite(enable1Pin, constrain(spd, 0, 255)); // Use the mapped speed
 }
 
 void adjustRadioFrequency()
