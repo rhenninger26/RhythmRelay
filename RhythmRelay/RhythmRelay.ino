@@ -20,8 +20,6 @@ unsigned char str[MAX_LEN]; //MAX_LEN is 16: size of the array
 unsigned char key[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }; // Default key for authentication
 
 char lastReadUrl[300] = "";
-//String storedUrl = "";
-//String currentURL = "";
 bool urlPrinted = false;
 
 // --------- PLAY/PAUSE BUTTON -----------
@@ -34,14 +32,14 @@ const unsigned long debounceDelay = 50;
 
 // --------- RECORD MODE POTENTIOMETER -----------
 int recordModePotPin = A2;
-int recordModeChangeValue = 110; // the value in which the potentiometer will flip a bool to change into record mode
+int recordModeChangeValue = 50; // the value in which the potentiometer will flip a bool to change into record mode
 
 // -------- DC MOTOR ----------
-int in1Pin = 5; // Define L293D channel 1 pin
-int in2Pin = 3; // Define L293D channel 2 pin
-int enable1Pin = 6; // Define L293D enable 1 pin
-boolean rotationDir; // Define a variable to save the motor's rotation direction, true and false are represented by positive rotation and reverse rotation.
-int rotationSpeed; // Define a variable to save the motor rotation speed
+// int in1Pin = 5; // Define L293D channel 1 pin
+// int in2Pin = 3; // Define L293D channel 2 pin
+// int enable1Pin = 6; // Define L293D enable 1 pin
+// boolean rotationDir; // Define a variable to save the motor's rotation direction, true and false are represented by positive rotation and reverse rotation.
+// int rotationSpeed; // Define a variable to save the motor rotation speed
 
 // -------- FREQUENCY POTENTIOMETER ---------
 int frequencyPotPin = A0; // Potentiometer output connected to analog pin 0
@@ -83,9 +81,9 @@ void setup() {
 	rfid.init();
 
 	// Motor initalization
-	pinMode(in1Pin, OUTPUT);
-	pinMode(in2Pin, OUTPUT);
-	pinMode(enable1Pin, OUTPUT);
+	// pinMode(in1Pin, OUTPUT);
+	// pinMode(in2Pin, OUTPUT);
+	// pinMode(enable1Pin, OUTPUT);
 
 	// WiFi initalization
 	Serial.println("Connecting to wifi...");
@@ -358,21 +356,21 @@ void ShowCardType(unsigned char* type)
 		Serial.println("Unknown");
 }
 
-void driveMotor(boolean dir, int spd)
-{
-	// Control motor rotation direction
-	if (dir) {
-		digitalWrite(in1Pin, HIGH);
-		digitalWrite(in2Pin, LOW);
-	}
-	else {
-		digitalWrite(in1Pin, LOW);
-		digitalWrite(in2Pin, HIGH);
-	}
+// void driveMotor(boolean dir, int spd)
+// {
+// 	// Control motor rotation direction
+// 	if (dir) {
+// 		digitalWrite(in1Pin, HIGH);
+// 		digitalWrite(in2Pin, LOW);
+// 	}
+// 	else {
+// 		digitalWrite(in1Pin, LOW);
+// 		digitalWrite(in2Pin, HIGH);
+// 	}
 
-	// Control motor rotation speed
-	analogWrite(enable1Pin, constrain(spd, 0, 255)); // Use the mapped speed
-}
+// 	// Control motor rotation speed
+// 	analogWrite(enable1Pin, constrain(spd, 0, 255)); // Use the mapped speed
+// }
 
 void adjustRadioFrequency()
 {
@@ -383,15 +381,15 @@ void adjustRadioFrequency()
 
 		int averageFrequencyVal = 0;
 		// Reduce samples to decrease processing time
-		for (int i = 0; i < 10; i++)
+		for (int i = 0; i < 30; i++)
 		{
 			int frequencyPotVal = analogRead(frequencyPotPin);
 			averageFrequencyVal = averageFrequencyVal + frequencyPotVal;
 		}
-		averageFrequencyVal = averageFrequencyVal / 10;
+		averageFrequencyVal = averageFrequencyVal / 30;
 
 		// mapping the potentiometer value to a value between radio frequencies 87.0 - 107.00
-		int frequencyInt = map(averageFrequencyVal, 0, 721, 8700, 10700);
+		int frequencyInt = map(averageFrequencyVal, 0, 729, 8700, 10700);
 		float frequencyRaw = frequencyInt / 100.0f;
 
 		// Stabilize to odd decimal places (x.1, x.3, x.5, x.7, x.9)
@@ -426,23 +424,32 @@ float stabilizeToOddDecimals(float rawFrequency)
 	// Round to the nearest odd decimal (0.1, 0.3, 0.5, 0.7, 0.9)
 	int roundedFrac = round(fracPart * 10);
 
+	// Handle rollover
+	if (roundedFrac >= 10) 
+	{
+		roundedFrac = 1;
+		intPart += 1;
+	}
+
 	// Ensure it's odd (1, 3, 5, 7, 9)
 	if (roundedFrac % 2 == 0) 
 	{
-		// If even, adjust to the nearest odd value
 		if (roundedFrac == 0) 
 		{
-			roundedFrac = 1;  // Special case for 0
+			// If the rounded fraction is exactly 0 (e.g., 100.0), snap to 0.1 (the lowest odd decimal)
+			roundedFrac = 1;
 		}
 		else if (roundedFrac == 10) 
 		{
-			// If we rounded to 1.0, go to 0.9 instead and increment integer part
-			roundedFrac = 9;
+			// If the rounded fraction is 10 (e.g., 100.95 rounds to 10), roll over to the next integer and set to 0.1
+			roundedFrac = 1;
 			intPart += 1;
 		}
 		else 
 		{
-			// Otherwise, choose the nearest odd value
+			// For any other even value, adjust to the nearest odd value:
+			// If the original fraction was just above the even value, round up to the next odd;
+			// otherwise, round down to the previous odd.
 			roundedFrac = (fracPart * 10 > roundedFrac) ? roundedFrac + 1 : roundedFrac - 1;
 		}
 	}
