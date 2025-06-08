@@ -39,4 +39,5 @@ Development is organized into sprints:
 This is a capstone project by Rachel Henninger.
 
 All test code for this project was done in a separate repository linked here: [Arduino Test Code](https://github.com/rhenninger26/ArduinoTestCode)
+
 Project Notion Page: [Capstone Home Page - Rhythm Relay](https://www.notion.so/Capstone-Home-Page-Rhythm-Relay-1b9096199dd580b99f72e8a805965d2c?pvs=21)
